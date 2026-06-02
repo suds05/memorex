@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from .app import MemoirApp
+from .agent_harness import AgentHarness
 from .llm import OpenAIResponsesClient
 from .storage import MemoryPaths, MemoryStore, default_data_dir
 
@@ -22,5 +22,5 @@ def main() -> int:
     paths = MemoryPaths.from_data_dir(default_data_dir())
     store = MemoryStore(paths)
     llm = OpenAIResponsesClient()
-    app = MemoirApp(store, llm)
-    return app.run()
+    harness = AgentHarness(store, llm)
+    return harness.run()

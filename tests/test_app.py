@@ -16,7 +16,7 @@ from unittest.mock import patch
 from pathlib import Path
 from typing import Any
 
-from memoir.app import MemoirApp
+from memoir.agent_harness import AgentHarness
 from memoir.llm import LLMClient
 from memoir.models import ChatResult, ToolCall
 from memoir.storage import MemoryPaths, MemoryStore
@@ -70,17 +70,17 @@ class FakeLLM(LLMClient):
         }
 
 
-class AppTests(unittest.TestCase):
-    # Exercise the CLI app using fake I/O and a fake model.
+class AgentHarnessTests(unittest.TestCase):
+    # Exercise the agent harness using fake I/O and a fake model.
 
-    def make_app(self, inputs: list[str]) -> tuple[MemoirApp, MemoryStore, list[str]]:
-        # Create an app wired to temporary storage and scripted user input.
+    def make_app(self, inputs: list[str]) -> tuple[AgentHarness, MemoryStore, list[str]]:
+        # Create a harness wired to temporary storage and scripted user input.
 
         self.tmp = tempfile.TemporaryDirectory()
         store = MemoryStore(MemoryPaths.from_data_dir(Path(self.tmp.name)))
         output: list[str] = []
         iterator = iter(inputs)
-        app = MemoirApp(
+        app = AgentHarness(
             store,
             FakeLLM(),
             input_func=lambda prompt="": next(iterator),
@@ -101,7 +101,7 @@ class AppTests(unittest.TestCase):
         text = app.handle_user_turn("I miss the old station.")
 
         self.assertEqual(text, "Tell me more.")
-        self.assertEqual(output, ["Tell me more."])
+        self.assertEqual(output, ["Tell me more.\n"])
         self.assertEqual([record["role"] for record in store.current_records()], ["user", "assistant"])
 
     def test_recover_previous_session_save(self) -> None:
@@ -124,6 +124,25 @@ class AppTests(unittest.TestCase):
         self.assertIn("Discarded the previous session.", output)
         self.assertEqual(store.read_memoir(), "")
 
+    def test_quit_prints_memory_paths_after_discard(self) -> None:
+        app, store, output = self.make_app(["n"])
+        store.append_current("user", "current session", "session-1")
+
+        app.handle_quit()
+
+        self.assertIn("Discarded the current session.", output)
+        self.assertTrue(any(line.startswith("Memoir.md: ") for line in output))
+        self.assertTrue(any(line.startswith("FullTranscript.jsonl: ") for line in output))
+
+    def test_quit_prints_memory_paths_without_current_session(self) -> None:
+        app, _store, output = self.make_app([])
+
+        app.handle_quit()
+
+        self.assertIn("Goodbye.", output)
+        self.assertTrue(any(line.startswith("Memoir.md: ") for line in output))
+        self.assertTrue(any(line.startswith("FullTranscript.jsonl: ") for line in output))
+
     def test_llm_requested_save_requires_confirmation(self) -> None:
         app, store, output = self.make_app(["n"])
         app.llm.next_chat = ChatResult(
@@ -141,7 +160,7 @@ class AppTests(unittest.TestCase):
 
         self.assertNotEqual(store.current_records(), [])
         self.assertEqual(store.read_memoir(), "")
-        self.assertIn("Ah yes. You were mentioning the train.", output)
+        self.assertIn("Ah yes. You were mentioning the train.\n", output)
 
     def test_debug_trace_does_not_change_chat_behavior(self) -> None:
         with patch.dict("os.environ", {"MEMOIR_DEBUG": "1"}):
@@ -151,7 +170,7 @@ class AppTests(unittest.TestCase):
 
         self.assertEqual(text, "Tell me more.")
         self.assertEqual([record["role"] for record in store.current_records()], ["user", "assistant"])
-        self.assertEqual(output, ["Tell me more."])
+        self.assertEqual(output, ["Tell me more.\n"])
 
     def test_no_color_disables_debug_color(self) -> None:
         with patch.dict("os.environ", {"NO_COLOR": "1"}):

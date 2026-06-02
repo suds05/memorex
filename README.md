@@ -115,3 +115,38 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 - Optionally set `NO_COLOR=1` to disable ANSI color in debug output.
 - Run the CLI: `python -m memoir`
 - Run tests: `python -m unittest discover -s tests -v`
+
+## Example Transcript
+```text
+$ ./run.sh
+Memoir is listening. Type /save, /memory, or /quit.
+> Hey buddy!
+Hey! Nice to see you. What’s up?
+
+> Do you recall what I told you about tomorrow.
+Yes — I remember you said you have a follow-up interview tomorrow, after today’s one, and you weren’t feeling great about it. You also asked for ideas to pep yourself up.
+
+How are you feeling about it now?
+
+> Your idea was good. Can you give me more ideas.
+I’m glad it helped. A few more gentle ideas:
+
+- Keep it simple: aim to be present, not perfect.
+- Write down 3 strengths you can mention if nerves hit.
+- Do a quick “best case / worst case / most likely” check.
+- Pick one small ritual for before it starts — a walk, music, tea.
+- Remind yourself: they’re getting a real person, not a performance.
+
+Want ideas for calming your nerves, or for answering questions more confidently?
+
+>  I like the 'Keep it simple' one. Thanks a bunch.
+Glad that one landed. Simple can be a real strength.
+
+If you want, I can help you turn that into a tiny mantra for tomorrow.
+
+> /quit
+Save this session to the memoir before quitting? [y/N] y
+Saved and cleared the current session.
+Memoir.md: /home/suds05/.memorex/Memoir.md
+FullTranscript.jsonl: /home/suds05/.memorex/FullTranscript.jsonl
+```

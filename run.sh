@@ -14,9 +14,13 @@ set -euo pipefail
 # Easy local runtime settings. Values already exported in your shell win.
 : "${OPENAI_MODEL:=gpt-5.4-mini}"
 : "${MEMOIR_DATA_DIR:=${HOME}/.memorex}"
-: "${MEMOIR_DEBUG:=1}"
+
+# Uncomment to enable debug logging from the memoir package.
+#: "${MEMOIR_DEBUG:=1}"
+
 # Uncomment to disable ANSI color in debug output.
 # : "${NO_COLOR:=1}"
+
 export OPENAI_MODEL MEMOIR_DATA_DIR MEMOIR_DEBUG
 
 # Resolve the repository root from this script's location.

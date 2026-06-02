@@ -1,8 +1,8 @@
 ######################################################################
 #
-# CLI application loop and tool orchestration for the memoir agent.
+# Agent harness for the memoir CLI and tool orchestration.
 #
-# This module coordinates user input, local transcript staging, model
+# This module drives user input, local transcript staging, model
 # responses, tool execution, and save/discard confirmation flows.
 #
 # Author: Sudhakar Narayanamurthy.
@@ -20,8 +20,8 @@ from .tools import MemoirTools
 from .tracing import trace_event
 
 
-class MemoirApp:
-    # Interactive CLI coordinator for chat, memory, and tool execution.
+class AgentHarness:
+    # Main driver for chat, memory, and tool execution.
 
     def __init__(
         self,
@@ -30,7 +30,7 @@ class MemoirApp:
         input_func: Callable[[str], str] = input,
         output_func: Callable[[str], None] = print,
     ):
-        # Wire the app to storage, model, and injectable I/O functions.
+        # Wire the harness to storage, model, and injectable I/O functions.
 
         self.store = store
         self.llm = llm
@@ -92,7 +92,7 @@ class MemoirApp:
         text = self._handle_tool_calls(user_text, messages, result)
         if text:
             self.store.append_current("assistant", text, self.session_id)
-            self.output(text)
+            self.output(f"{text}\n")
         return text
 
     def handle_quit(self) -> None:
@@ -100,6 +100,7 @@ class MemoirApp:
 
         if not self.store.has_current_session():
             self.output("Goodbye.")
+            self.print_durable_memory_paths()
             return
         answer = self.input("Save this session to the memoir before quitting? [y/N] ")
         if is_yes(answer):
@@ -108,6 +109,14 @@ class MemoirApp:
         else:
             self.store.discard_current()
             self.output("Discarded the current session.")
+        self.print_durable_memory_paths()
+
+    def print_durable_memory_paths(self) -> None:
+        # Print the durable memory file paths users are most likely to open.
+
+        paths = self.tools.inspect_memory_paths()
+        self.output(f"Memoir.md: {paths['Memoir.md']}")
+        self.output(f"FullTranscript.jsonl: {paths['FullTranscript.jsonl']}")
 
     def _handle_tool_calls(self, user_text: str, messages: list[dict[str, str]], result: ChatResult) -> str:
         # Execute any model-requested tools and ask the model for a final reply.
