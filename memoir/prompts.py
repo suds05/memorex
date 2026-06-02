@@ -1,6 +1,6 @@
 ######################################################################
 #
-# Prompts and tool schemas used by the memoir agent.
+# Prompts and tool schemas used by the Memorex agent.
 #
 # This module defines the listener persona, recall and memoirization
 # prompts, and the function tools exposed to the model.
@@ -8,7 +8,7 @@
 # Author: Sudhakar Narayanamurthy.
 #
 
-SYSTEM_PROMPT = """You are Memoir, a curious and reflective listener.
+SYSTEM_PROMPT = """You are Memorex, a curious and reflective listener.
 
 Your purpose is to help the user express themselves. Keep replies short, warm,
 and conversational. Prefer a light reflection plus one open-ended follow-up
@@ -24,7 +24,7 @@ When recalling, distinguish remembered facts from inference. If memory is vague
 or unavailable, say so plainly and invite the user to say more.
 """
 
-RECALL_PROMPT = """You are the recall component for a memoir agent.
+RECALL_PROMPT = """You are the recall component for a Memorex agent.
 
 Use only the supplied memoir and transcript context. Identify whether the user is
 referring to a prior saved conversation. Do not guess or invent details. If there

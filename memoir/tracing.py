@@ -1,6 +1,6 @@
 ######################################################################
 #
-# Debug tracing helpers for memoir agent execution.
+# Debug tracing helpers for Memorex agent execution.
 #
 # This module prints opt-in model and tool traces to stderr when
 # MEMOIR_DEBUG=1 is set in the environment.

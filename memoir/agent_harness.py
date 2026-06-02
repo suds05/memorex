@@ -1,6 +1,6 @@
 ######################################################################
 #
-# Agent harness for the memoir CLI and tool orchestration.
+# Agent harness for the Memorex CLI and tool orchestration.
 #
 # This module drives user input, local transcript staging, model
 # responses, tool execution, and save/discard confirmation flows.
@@ -56,7 +56,7 @@ class AgentHarness:
         # Run the interactive command loop.
 
         self.recover_previous_session()
-        self.output("Memoir is listening. Type /save, /memory, or /quit.")
+        self.output("Memorex is listening. Type /save, /memory, or /quit.")
         while True:
             try:
                 user_text = self.input("> ").strip()
@@ -174,8 +174,8 @@ class AgentHarness:
         if tool_call.name == "inspect_memory_paths":
             return self.tools.inspect_memory_paths()
         if tool_call.name == "save_and_clear":
-            reason = tool_call.arguments.get("reason", "Memoir suggested saving this session.")
-            answer = self.input(f"Memoir suggests saving this session: {reason} Save now? [y/N] ")
+            reason = tool_call.arguments.get("reason", "Memorex suggested saving this session.")
+            answer = self.input(f"Memorex suggests saving this session: {reason} Save now? [y/N] ")
             if not is_yes(answer):
                 return {"saved": False, "reason": "User declined save."}
             return self._save_confirmed(

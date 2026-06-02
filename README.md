@@ -1,7 +1,7 @@
-# Memoir Agent CLI
+# Memorex Agent CLI
 
 ## Summary
-Build a Python CLI called `memoir` for a reflective listener agent. It chats with the user, records the active session in `CurrentSession.jsonl`, saves approved sessions into both `Memoir.md` and `FullTranscript.jsonl`, and can recall saved earlier conversations when the user refers to them.
+Build a Python CLI called `memorex` for a reflective listener agent. It chats with the user, records the active session in `CurrentSession.jsonl`, saves approved sessions into both `Memoir.md` and `FullTranscript.jsonl`, and can recall saved earlier conversations when the user refers to them.
 
 Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. Default to `gpt-5.4-mini`, configurable via `OPENAI_MODEL`.
 
@@ -119,7 +119,7 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 ## Example Transcript
 ```text
 $ ./run.sh
-Memoir is listening. Type /save, /memory, or /quit.
+Memorex is listening. Type /save, /memory, or /quit.
 > Hey buddy!
 Hey! Nice to see you. What’s up?
 

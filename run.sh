@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ######################################################################
 #
-# Bootstrap script for running the memoir CLI.
+# Bootstrap script for running the Memorex CLI.
 #
 # This script creates a local virtual environment, installs the memoir
 # package in editable mode, checks OpenAI credentials, and launches the CLI.
@@ -84,5 +84,5 @@ if [ -z "${OPENAI_API_KEY:-}" ]; then
   exit 1
 fi
 
-# Replace the shell process with the memoir CLI.
+# Replace the shell process with the Memorex CLI.
 exec python -m memoir

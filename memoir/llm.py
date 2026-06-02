@@ -1,6 +1,6 @@
 ######################################################################
 #
-# OpenAI Responses API wrapper and LLM protocol for the memoir agent.
+# OpenAI Responses API wrapper and LLM protocol for the Memorex agent.
 #
 # This module isolates model calls for chat, recall, and memoirization
 # so the application can use fake clients in tests.

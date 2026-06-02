@@ -1,6 +1,6 @@
 ######################################################################
 #
-# Package metadata for the memoir agent CLI.
+# Package metadata for the Memorex agent CLI.
 #
 # This module exposes package-level metadata shared by the rest of the
 # memoir application.

@@ -1,6 +1,6 @@
 ######################################################################
 #
-# Module entrypoint for running the memoir CLI with `python -m memoir`.
+# Module entrypoint for running the Memorex CLI with `python -m memoir`.
 #
 # This module delegates execution to the CLI main function when the
 # package is invoked as a Python module.
