@@ -1,0 +1,21 @@
+######################################################################
+#
+# Git ignore rules for local Python and memoir runtime artifacts.
+#
+# This file keeps bytecode caches, virtual environments, test caches,
+# and local memory data out of version control.
+#
+# Author: Sudhakar Narayanamurthy.
+#
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+data/
+*.egg-info/
+build/
+dist/

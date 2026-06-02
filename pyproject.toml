@@ -1,0 +1,25 @@
+######################################################################
+#
+# Python package metadata and CLI entrypoint configuration.
+#
+# This file defines the memoir CLI package, its dependency on the
+# OpenAI SDK, and the installed `memoir` console script.
+#
+# Author: Sudhakar Narayanamurthy.
+#
+
+[project]
+name = "memorex"
+version = "0.1.0"
+description = "A simple memoir agent CLI."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.0.0",
+]
+
+[project.scripts]
+memoir = "memoir.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

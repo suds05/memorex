@@ -33,7 +33,7 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 - Scaffold a small Python project with a CLI entrypoint runnable as `python -m memoir`.
 - Use the standard `openai` Python package and `OpenAI().responses.create(...)`.
 - Do not use the OpenAI Agents SDK for v1.
-- Store data under a local `data/` directory:
+- Store data under `~/.memorex` by default, with `MEMOIR_DATA_DIR` available as an override:
   - `CurrentSession.jsonl`
   - `FullTranscript.jsonl`
   - `Memoir.md`
@@ -105,3 +105,11 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 - Test that LLM-requested `save_and_clear` requires explicit user confirmation before writing.
 - Test that failed memoirization does not clear `CurrentSession.jsonl`.
 - Mock OpenAI calls so tests do not require network access or an API key.
+
+## Running
+- Install dependencies in a Python 3.10+ environment: `python -m pip install -e .`
+- Set `OPENAI_API_KEY` in the environment.
+- Optionally set `OPENAI_MODEL`; otherwise the CLI uses `gpt-5.4-mini`.
+- Optionally set `MEMOIR_DATA_DIR`; otherwise memory files are stored in `~/.memorex`.
+- Run the CLI: `python -m memoir`
+- Run tests: `python -m unittest discover -s tests -v`
