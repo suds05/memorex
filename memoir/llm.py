@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 from .models import ChatResult, ToolCall
 from .prompts import MEMOIRIZATION_PROMPT, RECALL_PROMPT, SYSTEM_PROMPT, TOOL_SCHEMAS
+from .tracing import trace_event
 
 DEFAULT_MODEL = "gpt-5.4-mini"
 
@@ -82,7 +83,9 @@ class OpenAIResponsesClient:
         }
         if tools:
             kwargs["tools"] = TOOL_SCHEMAS
+        trace_event("llm_request.chat", sanitize_request(kwargs))
         response = self.client.responses.create(**kwargs)
+        trace_event("llm_response.chat", response_to_trace(response))
         return self._chat_result(response)
 
     def chat_with_tool_outputs(
@@ -93,12 +96,17 @@ class OpenAIResponsesClient:
     ) -> ChatResult:
         # Send function-call outputs back to the model for the final reply.
 
+        request_payload = {
+            "model": self.model,
+            "instructions": SYSTEM_PROMPT,
+            "input": [*messages, *previous_output, *tool_outputs],
+            "tools": TOOL_SCHEMAS,
+        }
+        trace_event("llm_request.tool_followup", sanitize_request(request_payload))
         response = self.client.responses.create(
-            model=self.model,
-            instructions=SYSTEM_PROMPT,
-            input=[*messages, *previous_output, *tool_outputs],
-            tools=TOOL_SCHEMAS,
+            **request_payload,
         )
+        trace_event("llm_response.tool_followup", response_to_trace(response))
         return self._chat_result(response)
 
     def memoirize(self, records: list[dict[str, Any]], suggested_title: str | None = None) -> str:
@@ -108,11 +116,16 @@ class OpenAIResponsesClient:
             "records": records,
             "suggested_title": suggested_title,
         }
+        request_payload = {
+            "model": self.model,
+            "instructions": MEMOIRIZATION_PROMPT,
+            "input": json.dumps(prompt, ensure_ascii=False),
+        }
+        trace_event("llm_request.memoirize", sanitize_request(request_payload))
         response = self.client.responses.create(
-            model=self.model,
-            instructions=MEMOIRIZATION_PROMPT,
-            input=json.dumps(prompt, ensure_ascii=False),
+            **request_payload,
         )
+        trace_event("llm_response.memoirize", response_to_trace(response))
         return response.output_text.strip()
 
     def recall(
@@ -134,11 +147,16 @@ class OpenAIResponsesClient:
             "full_transcript_jsonl": full_transcript,
             "full_transcript_used": full_transcript_used,
         }
+        request_payload = {
+            "model": self.model,
+            "instructions": RECALL_PROMPT,
+            "input": json.dumps(payload, ensure_ascii=False),
+        }
+        trace_event("llm_request.recall", sanitize_request(request_payload))
         response = self.client.responses.create(
-            model=self.model,
-            instructions=RECALL_PROMPT,
-            input=json.dumps(payload, ensure_ascii=False),
+            **request_payload,
         )
+        trace_event("llm_response.recall", response_to_trace(response))
         return parse_recall_json(response.output_text, full_transcript_used)
 
     def _chat_result(self, response: Any) -> ChatResult:
@@ -187,3 +205,48 @@ def parse_recall_json(raw_text: str, full_transcript_used: bool) -> dict[str, An
     parsed.setdefault("supporting_excerpts", [])
     parsed["full_transcript_used"] = bool(parsed.get("full_transcript_used", full_transcript_used))
     return parsed
+
+
+# Prepare a Responses API request for debug printing.
+def sanitize_request(request: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "model": request.get("model"),
+        "instructions": request.get("instructions"),
+        "input": request.get("input"),
+        "tools": request.get("tools"),
+    }
+
+
+# Prepare a Responses API response for debug printing.
+def response_to_trace(response: Any) -> dict[str, Any]:
+    return {
+        "id": getattr(response, "id", None),
+        "model": getattr(response, "model", None),
+        "status": getattr(response, "status", None),
+        "output_text": getattr(response, "output_text", None),
+        "output": response_output_to_trace(getattr(response, "output", []) or []),
+        "usage": object_to_plain(getattr(response, "usage", None)),
+    }
+
+
+# Convert model output items into JSON-serializable debug data.
+def response_output_to_trace(output: list[Any]) -> list[Any]:
+    traced = []
+    for item in output:
+        traced.append(object_to_plain(item))
+    return traced
+
+
+# Convert SDK objects into plain data for trace printing.
+def object_to_plain(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [object_to_plain(item) for item in value]
+    if isinstance(value, dict):
+        return {key: object_to_plain(item) for key, item in value.items()}
+    if hasattr(value, "model_dump"):
+        return object_to_plain(value.model_dump())
+    if hasattr(value, "__dict__"):
+        return object_to_plain(vars(value))
+    return str(value)

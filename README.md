@@ -111,5 +111,7 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 - Set `OPENAI_API_KEY` in the environment.
 - Optionally set `OPENAI_MODEL`; otherwise the CLI uses `gpt-5.4-mini`.
 - Optionally set `MEMOIR_DATA_DIR`; otherwise memory files are stored in `~/.memorex`.
+- Optionally set `MEMOIR_DEBUG=1` to print dimmed LLM request/response and tool traces to stderr.
+- Optionally set `NO_COLOR=1` to disable ANSI color in debug output.
 - Run the CLI: `python -m memoir`
 - Run tests: `python -m unittest discover -s tests -v`

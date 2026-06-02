@@ -11,6 +11,14 @@
 
 set -euo pipefail
 
+# Easy local runtime settings. Values already exported in your shell win.
+: "${OPENAI_MODEL:=gpt-5.4-mini}"
+: "${MEMOIR_DATA_DIR:=${HOME}/.memorex}"
+: "${MEMOIR_DEBUG:=1}"
+# Uncomment to disable ANSI color in debug output.
+# : "${NO_COLOR:=1}"
+export OPENAI_MODEL MEMOIR_DATA_DIR MEMOIR_DEBUG
+
 # Resolve the repository root from this script's location.
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${SCRIPT_DIR}/.venv"
@@ -63,8 +71,8 @@ fi
 source "${VENV_DIR}/bin/activate"
 
 # Install the project and its dependencies into the local virtual environment.
-python -m pip install --upgrade pip >/dev/null
-python -m pip install -e "${SCRIPT_DIR}"
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -e "${SCRIPT_DIR}"
 
 # Refuse to start the LLM-backed CLI without an API key.
 if [ -z "${OPENAI_API_KEY:-}" ]; then

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from memoir.app import MemoirApp
 from memoir.llm import LLMClient
 from memoir.models import ChatResult, ToolCall
 from memoir.storage import MemoryPaths, MemoryStore
+from memoir.tracing import color_enabled
 
 
 class FakeLLM(LLMClient):
@@ -140,6 +142,20 @@ class AppTests(unittest.TestCase):
         self.assertNotEqual(store.current_records(), [])
         self.assertEqual(store.read_memoir(), "")
         self.assertIn("Ah yes. You were mentioning the train.", output)
+
+    def test_debug_trace_does_not_change_chat_behavior(self) -> None:
+        with patch.dict("os.environ", {"MEMOIR_DEBUG": "1"}):
+            app, store, output = self.make_app([])
+
+            text = app.handle_user_turn("I saw the old station.")
+
+        self.assertEqual(text, "Tell me more.")
+        self.assertEqual([record["role"] for record in store.current_records()], ["user", "assistant"])
+        self.assertEqual(output, ["Tell me more."])
+
+    def test_no_color_disables_debug_color(self) -> None:
+        with patch.dict("os.environ", {"NO_COLOR": "1"}):
+            self.assertFalse(color_enabled())
 
 
 if __name__ == "__main__":

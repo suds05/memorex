@@ -17,6 +17,7 @@ from .llm import LLMClient
 from .models import ChatResult, ToolCall
 from .storage import MemoryStore, new_session_id
 from .tools import MemoirTools
+from .tracing import trace_event
 
 
 class MemoirApp:
@@ -114,9 +115,24 @@ class MemoirApp:
         if not result.tool_calls:
             return result.text
 
+        trace_event(
+            "tool_calls.detected",
+            {
+                "count": len(result.tool_calls),
+                "tool_calls": [tool_call.__dict__ for tool_call in result.tool_calls],
+            },
+        )
         outputs: list[dict[str, Any]] = []
         for tool_call in result.tool_calls:
             tool_result = self._execute_tool_call(user_text, tool_call)
+            trace_event(
+                "tool_result",
+                {
+                    "name": tool_call.name,
+                    "call_id": tool_call.call_id,
+                    "result": tool_result,
+                },
+            )
             outputs.append(
                 {
                     "type": "function_call_output",
@@ -131,6 +147,14 @@ class MemoirApp:
     def _execute_tool_call(self, user_text: str, tool_call: ToolCall) -> dict[str, Any]:
         # Validate and dispatch a single requested tool call.
 
+        trace_event(
+            "tool_call.execute",
+            {
+                "name": tool_call.name,
+                "call_id": tool_call.call_id,
+                "arguments": tool_call.arguments,
+            },
+        )
         if tool_call.name == "recall":
             hint = tool_call.arguments.get("hint") or user_text
             return self.tools.recall(
