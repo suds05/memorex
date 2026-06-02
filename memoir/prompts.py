@@ -20,15 +20,20 @@ when the user refers to earlier saved conversations. You may suggest saving when
 a conversation reaches a meaningful stopping point, but saving requires explicit
 user confirmation and is controlled by the CLI.
 
+The user's profile may be included as background context. Use it gently for
+personalization and continuity. Do not mention profile facts unless relevant, and
+do not overstate inferred preferences as facts.
+
 When recalling, distinguish remembered facts from inference. If memory is vague
 or unavailable, say so plainly and invite the user to say more.
 """
 
 RECALL_PROMPT = """You are the recall component for a Memorex agent.
 
-Use only the supplied memoir and transcript context. Identify whether the user is
-referring to a prior saved conversation. Do not guess or invent details. If there
-is no grounded match, return found=false.
+Use only the supplied memoir and user profile context. Identify whether the user
+is referring to a prior saved conversation. Use the profile only as
+personalization context, not as proof that an event happened. Do not guess or
+invent details. If there is no grounded match, return found=false.
 
 Return only JSON with these keys:
 - found: boolean
@@ -36,7 +41,6 @@ Return only JSON with these keys:
 - summary: string
 - date_or_session_id: string or null
 - supporting_excerpts: array of short strings
-- full_transcript_used: boolean
 """
 
 MEMOIRIZATION_PROMPT = """You convert a saved chat session into a readable memoir entry.
@@ -44,7 +48,28 @@ MEMOIRIZATION_PROMPT = """You convert a saved chat session into a readable memoi
 Write in first person, as the user might remember the conversation later. Preserve
 the user's meaning. Do not invent facts. Keep uncertainty intact. Avoid therapy,
 diagnosis, or advice. Produce a dated Markdown entry with a short title and a few
-concise paragraphs.
+concise paragraphs. Include session-local preference signals when relevant, but
+do not overclaim them as stable traits.
+"""
+
+PROFILE_UPDATE_PROMPT = """You update a structured user profile for Memorex.
+
+Use the current saved session, existing memoir, and existing profile. Return only
+JSON for the full updated profile with these keys:
+- preferences: array
+- recurring_themes: array
+- important_people: array
+- goals: array
+- open_threads: array
+
+Rules:
+- Keep updates conservative and grounded in the supplied session/memoir/profile.
+- Add explicit user-stated preferences immediately.
+- Promote inferred themes or preferences only when they appear across at least
+  two saved memoir entries.
+- Avoid sensitive or speculative inferences.
+- Preserve existing useful profile entries unless contradicted by stronger
+  evidence.
 """
 
 TOOL_SCHEMAS = [

@@ -56,7 +56,7 @@ class AgentHarness:
         # Run the interactive command loop.
 
         self.recover_previous_session()
-        self.output("Memorex is listening. Type /save, /memory, or /quit.")
+        self.output("Memorex is listening. Type /quit to exit.")
         while True:
             try:
                 user_text = self.input("> ").strip()
@@ -88,7 +88,7 @@ class AgentHarness:
 
         self.store.append_current("user", user_text, self.session_id)
         messages = records_to_messages(self.store.recent_context())
-        result = self.llm.chat(messages, tools=True)
+        result = self.llm.chat(messages, user_profile=self.store.read_user_profile(), tools=True)
         text = self._handle_tool_calls(user_text, messages, result)
         if text:
             self.store.append_current("assistant", text, self.session_id)
@@ -102,7 +102,7 @@ class AgentHarness:
             self.output("Goodbye.")
             self.print_durable_memory_paths()
             return
-        answer = self.input("Save this session to the memoir before quitting? [y/N] ")
+        answer = self.input("Update the Memoir and User Profile based on this session before quitting? [y/N] ")
         if is_yes(answer):
             self._save_confirmed(reason="User confirmed save at /quit.")
             self.output("Saved and cleared the current session.")
@@ -116,7 +116,7 @@ class AgentHarness:
 
         paths = self.tools.inspect_memory_paths()
         self.output(f"Memoir.md: {paths['Memoir.md']}")
-        self.output(f"FullTranscript.jsonl: {paths['FullTranscript.jsonl']}")
+        self.output(f"UserProfile.json: {paths['UserProfile.json']}")
 
     def _handle_tool_calls(self, user_text: str, messages: list[dict[str, str]], result: ChatResult) -> str:
         # Execute any model-requested tools and ask the model for a final reply.
@@ -150,7 +150,12 @@ class AgentHarness:
                 }
             )
 
-        final = self.llm.chat_with_tool_outputs(messages, result.raw_output, outputs)
+        final = self.llm.chat_with_tool_outputs(
+            messages,
+            result.raw_output,
+            outputs,
+            user_profile=self.store.read_user_profile(),
+        )
         return final.text or result.text
 
     def _execute_tool_call(self, user_text: str, tool_call: ToolCall) -> dict[str, Any]:

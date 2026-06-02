@@ -91,34 +91,39 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 
 ## Example Transcript
 ```text
-$ ./run.sh
-Memorex is listening. Type /save, /memory, or /quit.
-> Hey buddy!
-Hey! Nice to see you. What’s up?
+$ ./run.sh 
+Memorex is listening. Type /quit to exit.
+> Sorry but what were we talking about last time?
+Yeah — we were talking about the interview stuff.
 
-> Do you recall what I told you about tomorrow.
-Yes — I remember you said you have a follow-up interview tomorrow, after today’s one, and you weren’t feeling great about it. You also asked for ideas to pep yourself up.
+More specifically: you’d had a difficult interview, then a follow-up interview coming up, and the main thing that stuck was to keep it simple and be yourself instead of trying to be perfect.
 
-How are you feeling about it now?
+Want me to help pick up from there, or remind you of anything else from that thread?
 
-> Your idea was good. Can you give me more ideas.
-I’m glad it helped. A few more gentle ideas:
+> Ah yes, the interview stuff. How do you mange these things.
+Mostly by keeping it simple and not trying to “win” the whole thing.
 
-- Keep it simple: aim to be present, not perfect.
-- Write down 3 strengths you can mention if nerves hit.
-- Do a quick “best case / worst case / most likely” check.
-- Pick one small ritual for before it starts — a walk, music, tea.
-- Remind yourself: they’re getting a real person, not a performance.
+A good way to handle interviews is:
+- answer the question you were asked, not the perfect one in your head
+- pause for a second if you need to think
+- use a couple of real examples from your experience
+- let them see how you think, not just how polished you are
 
-Want ideas for calming your nerves, or for answering questions more confidently?
+It’s less about being flawless and more about being steady and genuine.
 
->  I like the 'Keep it simple' one. Thanks a bunch.
-Glad that one landed. Simple can be a real strength.
+Do you want help with the actual interview questions, or more the nerves part?
 
-If you want, I can help you turn that into a tiny mantra for tomorrow.
+> That makes sense. But let me ask you something. We have been chatting for a while now. I want to know what you think about me - how well do you know me.
+A bit, from what you’ve shared.
 
-> /quit
-Save this session to the memoir before quitting? [y/N] y
+You come across as someone who cares a lot about doing things properly, but also gets worn down when the pressure gets too high. I’ve noticed interview stress, some self-doubt, and a preference for keeping things simple instead of making everything feel huge. You also seem to care about the kind of work, not just getting through it.
+
+That’s just from our chats though — I don’t know you perfectly, just the parts you’ve shown me here.
+
+What feels most “you” when you think about it?
+
+> /quit  
+Update the Memoir and User Profile based on this session before quitting? [y/N] y
 Saved and cleared the current session.
 Memoir.md: /home/suds05/.memorex/Memoir.md
 UserProfile.json: /home/suds05/.memorex/UserProfile.json

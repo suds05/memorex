@@ -2,8 +2,8 @@
 #
 # Tests for local memoir file storage behavior.
 #
-# This module verifies JSONL persistence, recall size limits, save
-# clearing, and memory directory selection.
+# This module verifies JSONL persistence, profile storage, save clearing,
+# and memory directory selection.
 #
 # Author: Sudhakar Narayanamurthy.
 #
@@ -16,7 +16,6 @@ from unittest.mock import patch
 from pathlib import Path
 
 from memoir.storage import (
-    FULL_TRANSCRIPT_RECALL_LIMIT_BYTES,
     MemoryPaths,
     MemoryStore,
     append_text,
@@ -25,7 +24,7 @@ from memoir.storage import (
 
 
 class MemoryStoreTests(unittest.TestCase):
-    # Exercise JSONL storage, recall limits, and data directory selection.
+    # Exercise JSONL storage, profile storage, and data directory selection.
 
     def make_store(self) -> MemoryStore:
         # Create an isolated temporary memory store for a test.
@@ -55,20 +54,23 @@ class MemoryStoreTests(unittest.TestCase):
         store.append_current("user", "hello", "session-1")
         records = store.current_records()
 
-        store.append_saved_session(records, "## Entry\n\nI said hello.")
+        store.append_saved_session(
+            records,
+            "## Entry\n\nI said hello.",
+            user_profile={"preferences": ["likes concise replies"], "recurring_themes": [], "important_people": [], "goals": [], "open_threads": []},
+        )
 
         self.assertEqual(store.current_records(), [])
         self.assertIn("I said hello.", store.read_memoir())
-        self.assertEqual(len(store.read_full_transcript_for_recall()[0].splitlines()), 1)
+        self.assertIn("likes concise replies", store.read_user_profile_text())
 
-    def test_full_transcript_recall_limit(self) -> None:
+    def test_read_user_profile_returns_default_when_missing(self) -> None:
         store = self.make_store()
-        append_text(store.paths.full_transcript, "x" * (FULL_TRANSCRIPT_RECALL_LIMIT_BYTES + 1))
 
-        transcript, used = store.read_full_transcript_for_recall()
+        profile = store.read_user_profile()
 
-        self.assertEqual(transcript, "")
-        self.assertFalse(used)
+        self.assertEqual(profile["preferences"], [])
+        self.assertEqual(profile["open_threads"], [])
 
     def test_default_data_dir_uses_home_memorex(self) -> None:
         self.assertEqual(default_data_dir(), Path.home() / ".memorex")

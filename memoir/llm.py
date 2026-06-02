@@ -15,7 +15,7 @@ import os
 from typing import Any, Protocol
 
 from .models import ChatResult, ToolCall
-from .prompts import MEMOIRIZATION_PROMPT, RECALL_PROMPT, SYSTEM_PROMPT, TOOL_SCHEMAS
+from .prompts import MEMOIRIZATION_PROMPT, PROFILE_UPDATE_PROMPT, RECALL_PROMPT, SYSTEM_PROMPT, TOOL_SCHEMAS
 from .tracing import trace_event
 
 DEFAULT_MODEL = "gpt-5.4-mini"
@@ -24,7 +24,7 @@ DEFAULT_MODEL = "gpt-5.4-mini"
 class LLMClient(Protocol):
     # Interface used by the app so tests can provide a fake model.
 
-    def chat(self, messages: list[dict[str, str]], tools: bool = True) -> ChatResult:
+    def chat(self, messages: list[dict[str, str]], user_profile: dict[str, Any] | None = None, tools: bool = True) -> ChatResult:
         # Generate a chat response and optional tool calls.
 
         ...
@@ -34,6 +34,7 @@ class LLMClient(Protocol):
         messages: list[dict[str, str]],
         previous_output: list[Any],
         tool_outputs: list[dict[str, Any]],
+        user_profile: dict[str, Any] | None = None,
     ) -> ChatResult:
         # Continue a chat turn after local tool execution.
 
@@ -44,13 +45,22 @@ class LLMClient(Protocol):
 
         ...
 
+    def update_user_profile(
+        self,
+        records: list[dict[str, Any]],
+        memoir: str,
+        user_profile: dict[str, Any],
+    ) -> dict[str, Any]:
+        # Produce conservative updates to structured user profile memory.
+
+        ...
+
     def recall(
         self,
         user_utterance: str,
         recent_context: list[dict[str, Any]],
         memoir: str,
-        full_transcript: str,
-        full_transcript_used: bool,
+        user_profile: dict[str, Any],
         hint: str | None = None,
     ) -> dict[str, Any]:
         # Use saved memory context to identify a referenced prior conversation.
@@ -73,13 +83,23 @@ class OpenAIResponsesClient:
             ) from exc
         self.client = OpenAI()
 
-    def chat(self, messages: list[dict[str, str]], tools: bool = True) -> ChatResult:
+    def chat(self, messages: list[dict[str, str]], user_profile: dict[str, Any] | None = None, tools: bool = True) -> ChatResult:
         # Send current conversation context to the model for a listener reply.
 
+        input_messages = messages
+        if user_profile is not None:
+            input_messages = [
+                {
+                    "role": "developer",
+                    "content": "UserProfile.json context for personalization only:\n"
+                    + json.dumps(user_profile, ensure_ascii=False, indent=2),
+                },
+                *messages,
+            ]
         kwargs: dict[str, Any] = {
             "model": self.model,
             "instructions": SYSTEM_PROMPT,
-            "input": messages,
+            "input": input_messages,
         }
         if tools:
             kwargs["tools"] = TOOL_SCHEMAS
@@ -93,13 +113,24 @@ class OpenAIResponsesClient:
         messages: list[dict[str, str]],
         previous_output: list[Any],
         tool_outputs: list[dict[str, Any]],
+        user_profile: dict[str, Any] | None = None,
     ) -> ChatResult:
         # Send function-call outputs back to the model for the final reply.
 
+        input_messages = [*messages, *previous_output, *tool_outputs]
+        if user_profile is not None:
+            input_messages = [
+                {
+                    "role": "developer",
+                    "content": "UserProfile.json context for personalization only:\n"
+                    + json.dumps(user_profile, ensure_ascii=False, indent=2),
+                },
+                *input_messages,
+            ]
         request_payload = {
             "model": self.model,
             "instructions": SYSTEM_PROMPT,
-            "input": [*messages, *previous_output, *tool_outputs],
+            "input": input_messages,
             "tools": TOOL_SCHEMAS,
         }
         trace_event("llm_request.tool_followup", sanitize_request(request_payload))
@@ -128,13 +159,37 @@ class OpenAIResponsesClient:
         trace_event("llm_response.memoirize", response_to_trace(response))
         return response.output_text.strip()
 
+    def update_user_profile(
+        self,
+        records: list[dict[str, Any]],
+        memoir: str,
+        user_profile: dict[str, Any],
+    ) -> dict[str, Any]:
+        # Ask the model for conservative structured user profile updates.
+
+        prompt = {
+            "records": records,
+            "memoir_md": memoir,
+            "user_profile": user_profile,
+        }
+        request_payload = {
+            "model": self.model,
+            "instructions": PROFILE_UPDATE_PROMPT,
+            "input": json.dumps(prompt, ensure_ascii=False),
+        }
+        trace_event("llm_request.update_user_profile", sanitize_request(request_payload))
+        response = self.client.responses.create(
+            **request_payload,
+        )
+        trace_event("llm_response.update_user_profile", response_to_trace(response))
+        return parse_profile_json(response.output_text, user_profile)
+
     def recall(
         self,
         user_utterance: str,
         recent_context: list[dict[str, Any]],
         memoir: str,
-        full_transcript: str,
-        full_transcript_used: bool,
+        user_profile: dict[str, Any],
         hint: str | None = None,
     ) -> dict[str, Any]:
         # Ask the model to perform grounded recall over saved memory text.
@@ -144,8 +199,7 @@ class OpenAIResponsesClient:
             "recent_context": recent_context,
             "hint": hint,
             "memoir_md": memoir,
-            "full_transcript_jsonl": full_transcript,
-            "full_transcript_used": full_transcript_used,
+            "user_profile": user_profile,
         }
         request_payload = {
             "model": self.model,
@@ -157,7 +211,7 @@ class OpenAIResponsesClient:
             **request_payload,
         )
         trace_event("llm_response.recall", response_to_trace(response))
-        return parse_recall_json(response.output_text, full_transcript_used)
+        return parse_recall_json(response.output_text)
 
     def _chat_result(self, response: Any) -> ChatResult:
         # Normalize an OpenAI response object into ChatResult.
@@ -185,7 +239,7 @@ class OpenAIResponsesClient:
         )
 
 
-def parse_recall_json(raw_text: str, full_transcript_used: bool) -> dict[str, Any]:
+def parse_recall_json(raw_text: str) -> dict[str, Any]:
     # Parse recall JSON, falling back to a safe no-match result on invalid JSON.
 
     try:
@@ -203,7 +257,22 @@ def parse_recall_json(raw_text: str, full_transcript_used: bool) -> dict[str, An
     parsed.setdefault("summary", "")
     parsed.setdefault("date_or_session_id", None)
     parsed.setdefault("supporting_excerpts", [])
-    parsed["full_transcript_used"] = bool(parsed.get("full_transcript_used", full_transcript_used))
+    return parsed
+
+
+def parse_profile_json(raw_text: str, fallback: dict[str, Any]) -> dict[str, Any]:
+    # Parse profile JSON, falling back to the existing profile on invalid JSON.
+
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return fallback
+    if not isinstance(parsed, dict):
+        return fallback
+    for key in ["preferences", "recurring_themes", "important_people", "goals", "open_threads"]:
+        parsed.setdefault(key, fallback.get(key, []))
+        if not isinstance(parsed[key], list):
+            parsed[key] = fallback.get(key, [])
     return parsed
 
 

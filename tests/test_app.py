@@ -28,10 +28,12 @@ class FakeLLM(LLMClient):
 
     def __init__(self):
         self.next_chat = ChatResult(text="Tell me more.")
+        self.last_chat_user_profile = None
 
-    def chat(self, messages: list[dict[str, str]], tools: bool = True) -> ChatResult:
+    def chat(self, messages: list[dict[str, str]], user_profile: dict[str, Any] | None = None, tools: bool = True) -> ChatResult:
         # Return the preconfigured chat result.
 
+        self.last_chat_user_profile = user_profile
         return self.next_chat
 
     def chat_with_tool_outputs(
@@ -39,9 +41,11 @@ class FakeLLM(LLMClient):
         messages: list[dict[str, str]],
         previous_output: list[Any],
         tool_outputs: list[dict[str, Any]],
+        user_profile: dict[str, Any] | None = None,
     ) -> ChatResult:
         # Return a canned final response after tool execution.
 
+        self.last_chat_user_profile = user_profile
         return ChatResult(text="Ah yes. You were mentioning the train.")
 
     def memoirize(self, records: list[dict[str, Any]], suggested_title: str | None = None) -> str:
@@ -49,13 +53,25 @@ class FakeLLM(LLMClient):
 
         return "## Saved\n\nI saved this."
 
+    def update_user_profile(
+        self,
+        records: list[dict[str, Any]],
+        memoir: str,
+        user_profile: dict[str, Any],
+    ) -> dict[str, Any]:
+        # Return a canned profile update.
+
+        return {
+            **user_profile,
+            "preferences": [*user_profile.get("preferences", []), "likes practical suggestions"],
+        }
+
     def recall(
         self,
         user_utterance: str,
         recent_context: list[dict[str, Any]],
         memoir: str,
-        full_transcript: str,
-        full_transcript_used: bool,
+        user_profile: dict[str, Any],
         hint: str | None = None,
     ) -> dict[str, Any]:
         # Return a successful fake recall result.
@@ -66,7 +82,6 @@ class FakeLLM(LLMClient):
             "summary": "The train conversation.",
             "date_or_session_id": None,
             "supporting_excerpts": [],
-            "full_transcript_used": full_transcript_used,
         }
 
 
@@ -101,6 +116,7 @@ class AgentHarnessTests(unittest.TestCase):
         text = app.handle_user_turn("I miss the old station.")
 
         self.assertEqual(text, "Tell me more.")
+        self.assertEqual(app.llm.last_chat_user_profile["preferences"], [])
         self.assertEqual(output, ["Tell me more.\n"])
         self.assertEqual([record["role"] for record in store.current_records()], ["user", "assistant"])
 
@@ -132,7 +148,7 @@ class AgentHarnessTests(unittest.TestCase):
 
         self.assertIn("Discarded the current session.", output)
         self.assertTrue(any(line.startswith("Memoir.md: ") for line in output))
-        self.assertTrue(any(line.startswith("FullTranscript.jsonl: ") for line in output))
+        self.assertTrue(any(line.startswith("UserProfile.json: ") for line in output))
 
     def test_quit_prints_memory_paths_without_current_session(self) -> None:
         app, _store, output = self.make_app([])
@@ -141,7 +157,7 @@ class AgentHarnessTests(unittest.TestCase):
 
         self.assertIn("Goodbye.", output)
         self.assertTrue(any(line.startswith("Memoir.md: ") for line in output))
-        self.assertTrue(any(line.startswith("FullTranscript.jsonl: ") for line in output))
+        self.assertTrue(any(line.startswith("UserProfile.json: ") for line in output))
 
     def test_llm_requested_save_requires_confirmation(self) -> None:
         app, store, output = self.make_app(["n"])
@@ -161,6 +177,7 @@ class AgentHarnessTests(unittest.TestCase):
         self.assertNotEqual(store.current_records(), [])
         self.assertEqual(store.read_memoir(), "")
         self.assertIn("Ah yes. You were mentioning the train.\n", output)
+        self.assertEqual(app.llm.last_chat_user_profile["preferences"], [])
 
     def test_debug_trace_does_not_change_chat_behavior(self) -> None:
         with patch.dict("os.environ", {"MEMOIR_DEBUG": "1"}):

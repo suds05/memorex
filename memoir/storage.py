@@ -1,9 +1,9 @@
 ######################################################################
 #
-# Local file storage for staged sessions, transcript archive, and memoir prose.
+# Local file storage for staged sessions, memoir prose, and user profile.
 #
-# This module owns the ~/.memorex memory layout, JSONL transcript
-# helpers, recall size limit, and save/discard file operations.
+# This module owns the ~/.memorex memory layout, JSONL staging
+# helpers, atomic save staging, and save/discard file operations.
 #
 # Author: Sudhakar Narayanamurthy.
 #
@@ -18,7 +18,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-FULL_TRANSCRIPT_RECALL_LIMIT_BYTES = 100_000
+DEFAULT_USER_PROFILE: dict[str, Any] = {
+    "preferences": [],
+    "recurring_themes": [],
+    "important_people": [],
+    "goals": [],
+    "open_threads": [],
+}
 
 
 def utc_now_iso() -> str:
@@ -39,8 +45,9 @@ class MemoryPaths:
 
     data_dir: Path
     current_session: Path
-    full_transcript: Path
     memoir: Path
+    user_profile: Path
+    save_marker: Path
 
     @classmethod
     def from_data_dir(cls, data_dir: Path) -> "MemoryPaths":
@@ -49,8 +56,9 @@ class MemoryPaths:
         return cls(
             data_dir=data_dir,
             current_session=data_dir / "CurrentSession.jsonl",
-            full_transcript=data_dir / "FullTranscript.jsonl",
             memoir=data_dir / "Memoir.md",
+            user_profile=data_dir / "UserProfile.json",
+            save_marker=data_dir / ".save_complete",
         )
 
 
@@ -62,6 +70,15 @@ class MemoryStore:
 
         self.paths = paths
         self.paths.data_dir.mkdir(parents=True, exist_ok=True)
+        self.recover_completed_save()
+
+    def recover_completed_save(self) -> None:
+        # Finish cleanup if a previous save committed but crashed before clearing staging.
+
+        if self.paths.save_marker.exists():
+            clear_file_atomic(self.paths.current_session)
+            self.paths.save_marker.unlink(missing_ok=True)
+            fsync_dir(self.paths.save_marker.parent)
 
     def append_current(self, role: str, content: str, session_id: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         # Append one user or assistant turn to the staged current session.
@@ -97,24 +114,37 @@ class MemoryStore:
 
         return read_text(self.paths.memoir)
 
-    def read_full_transcript_for_recall(self) -> tuple[str, bool]:
-        # Read the raw transcript for recall when it is under the v1 size limit.
+    def read_user_profile(self) -> dict[str, Any]:
+        # Read the structured user profile, or return an empty default profile.
 
-        path = self.paths.full_transcript
-        if not path.exists():
-            return "", True
-        if path.stat().st_size > FULL_TRANSCRIPT_RECALL_LIMIT_BYTES:
-            return "", False
-        return read_text(path), True
+        if not self.paths.user_profile.exists():
+            return dict(DEFAULT_USER_PROFILE)
+        try:
+            profile = json.loads(read_text(self.paths.user_profile))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON in {self.paths.user_profile}") from exc
+        if not isinstance(profile, dict):
+            raise ValueError(f"Expected object JSON in {self.paths.user_profile}")
+        return {**DEFAULT_USER_PROFILE, **profile}
 
-    def append_saved_session(self, records: list[dict[str, Any]], memoir_entry: str) -> None:
-        # Commit a session to memoir and full transcript, then clear staging.
+    def read_user_profile_text(self) -> str:
+        # Read the user profile as formatted JSON for model context.
+
+        return json.dumps(self.read_user_profile(), ensure_ascii=False, indent=2)
+
+    def append_saved_session(self, records: list[dict[str, Any]], memoir_entry: str, user_profile: dict[str, Any] | None = None) -> None:
+        # Commit a session to memoir/profile, then clear staging.
 
         if not records:
             return
-        append_text(self.paths.memoir, ensure_trailing_newline(memoir_entry) + "\n")
-        append_jsonl(self.paths.full_transcript, records)
-        clear_file(self.paths.current_session)
+        updates = {self.paths.memoir: read_text(self.paths.memoir) + ensure_trailing_newline(memoir_entry) + "\n"}
+        if user_profile is not None:
+            updates[self.paths.user_profile] = json.dumps(user_profile, ensure_ascii=False, indent=2) + "\n"
+        atomic_replace_updates_and_clear(
+            updates=updates,
+            clear_path=self.paths.current_session,
+            marker_path=self.paths.save_marker,
+        )
 
     def discard_current(self) -> None:
         # Clear the staged current session without saving it.
@@ -126,8 +156,8 @@ class MemoryStore:
 
         return {
             "CurrentSession.jsonl": str(self.paths.current_session.resolve()),
-            "FullTranscript.jsonl": str(self.paths.full_transcript.resolve()),
             "Memoir.md": str(self.paths.memoir.resolve()),
+            "UserProfile.json": str(self.paths.user_profile.resolve()),
         }
 
 
@@ -181,10 +211,89 @@ def clear_file(path: Path) -> None:
     path.write_text("", encoding="utf-8")
 
 
+def clear_file_atomic(path: Path) -> None:
+    # Create or truncate a UTF-8 text file using atomic replacement.
+
+    atomic_replace_text(path, "")
+
+
 def ensure_trailing_newline(text: str) -> str:
     # Normalize text to end with exactly one newline.
 
     return text.rstrip() + "\n"
+
+
+def atomic_replace_updates_and_clear(updates: dict[Path, str], clear_path: Path, marker_path: Path) -> None:
+    # Atomically replace durable files, mark completion, then clear staging.
+
+    temp_paths: list[Path] = []
+    replacements: list[tuple[Path, Path]] = []
+    try:
+        for target_path, new_text in updates.items():
+            temp_path = sibling_temp_path(target_path)
+            temp_paths.append(temp_path)
+            write_text_fsync(temp_path, new_text)
+            replacements.append((temp_path, target_path))
+
+        for temp_path, target_path in replacements:
+            os.replace(temp_path, target_path)
+            fsync_dir(target_path.parent)
+
+        write_marker_atomic(marker_path)
+        if marker_path.exists():
+            clear_file_atomic(clear_path)
+            marker_path.unlink(missing_ok=True)
+            fsync_dir(marker_path.parent)
+    finally:
+        for temp_path in temp_paths:
+            temp_path.unlink(missing_ok=True)
+
+
+def atomic_replace_text(path: Path, text: str) -> None:
+    # Atomically replace a text file with new UTF-8 content.
+
+    temp_path = sibling_temp_path(path)
+    try:
+        write_text_fsync(temp_path, text)
+        os.replace(temp_path, path)
+        fsync_dir(path.parent)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def write_marker_atomic(path: Path) -> None:
+    # Atomically write a save-completion marker.
+
+    atomic_replace_text(path, utc_now_iso() + "\n")
+
+
+def sibling_temp_path(path: Path) -> Path:
+    # Create a unique temp path beside the target for same-filesystem replacement.
+
+    return path.with_name(f".{path.name}.{uuid4()}.tmp")
+
+
+def write_text_fsync(path: Path, text: str) -> None:
+    # Write text and fsync it so an atomic rename has durable source bytes.
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def fsync_dir(path: Path) -> None:
+    # Fsync a directory so file replacement metadata is durable where supported.
+
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def default_data_dir() -> Path:
