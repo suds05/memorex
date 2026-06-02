@@ -1,119 +1,82 @@
 # Memorex Agent CLI
 
 ## Summary
-Build a Python CLI called `memorex` for a reflective listener agent. It chats with the user, records the active session in `CurrentSession.jsonl`, saves approved sessions into both `Memoir.md` and `FullTranscript.jsonl`, and can recall saved earlier conversations when the user refers to them.
+Build a Python CLI for a reflective listener agent named Memorex. It chats with the user, records the active session in `CurrentSession.jsonl`, saves approved sessions into `Memoir.md` and `UserProfile.json`, and can recall saved earlier conversations when the user refers to them.
 
 Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. Default to `gpt-5.4-mini`, configurable via `OPENAI_MODEL`.
 
 ## Requirements
 - The agent presents as a curious, reflective listener who nudges the user to express themselves.
 - Agent remembers users well and acts accordingly. This is a key requirement.
-  - The agent maintains a lightweight understanding of the user over time, including preferences, recurring themes, important people, goals, and open threads.
-  - The agent supports continuity across sessions by noticing unresolved or recurring topics and, when appropriate, asking whether the user wants to revisit them.
-  - The agent adapts its response style based on remembered user preferences, such as concise answers, practical suggestions, or a reflective tone.
+  - Maintains lightweight understanding of preferences, recurring themes, important people, goals, and open threads.
+  - Uses relevant saved memory without requiring the user to explicitly ask "remember when," while keeping references gentle and grounded.
+  - Supports continuity across sessions by noticing unresolved or recurring topics and asking whether the user wants to revisit them when appropriate.
+  - Adapts response style based on remembered preferences, such as concise answers, practical suggestions, or a reflective tone.
 - Agent remains factual.
-  - Preserve uncertainty and avoid inventing details in generated memoir entries.
-  - When recalling, distinguish remembered facts from inference and avoid pretending certainty when memory is vague.
-- The user can refer to earlier saved conversations, such as "remember when we talked about...", and the agent should attempt to recall the relevant prior discussion.
-- Recall must be grounded in saved memory. If no likely match is found, the agent should say it does not remember clearly and invite the user to say more.
-- User should have control over saving sessions. The agent can suggest saving at natural moments, but the user must explicitly confirm before any files are written. 
+  - Preserve uncertainty and avoid inventing details in memoir entries or recall responses.
+  - Distinguish remembered facts from inference and avoid pretending certainty when memory is vague.
+- User control remains central: saving requires explicit confirmation, and saving a session implies permission to update both memoir and profile memory.
 
 ## Key Implementation Aspects
-- Scaffold a small Python project with a CLI entrypoint runnable as `python -m memoir`.
-- Use the standard `openai` Python package and `OpenAI().responses.create(...)`.
-- Do not use the OpenAI Agents SDK for v1.
-- Store data under `~/.memorex` by default, with `MEMOIR_DATA_DIR` available as an override:
-  - `CurrentSession.jsonl`
-  - `FullTranscript.jsonl`
-  - `Memoir.md`
-  - `UserProfile.json`
-- Use append-only JSONL for transcript durability.
-- Use the local transcript as the source of truth rather than relying only on OpenAI-hosted conversation state.
-- Every active turn is written to `CurrentSession.jsonl` as staging memory.
-- Saved sessions are appended to `FullTranscript.jsonl` with full-fidelity raw conversation records.
-- Saved sessions are also converted into dated readable entries in `Memoir.md`.
-- Saved sessions may also update `UserProfile.json`, which stores durable user-level facts, preferences, recurring themes, important people, goals, and open threads.
-- Saving a session is treated as permission to update `UserProfile.json`; no separate profile-update confirmation is required.
-- The user can trigger saving with `/save`.
-- The agent may suggest saving at natural moments, but saving requires explicit user confirmation.
-- On `/quit`, the CLI asks whether to save the active session.
-- On startup, if an interrupted `CurrentSession.jsonl` exists, the CLI asks whether to save or discard it before starting a new session.
-- `/memory` prints the paths for `CurrentSession.jsonl`, `FullTranscript.jsonl`, and `Memoir.md`.
-- For v1, full transcript recall only includes `FullTranscript.jsonl` when it is at or below `100_000` bytes. Above that limit, recall falls back to `Memoir.md` only and reports that exact transcript recall was skipped.
-- Send recent/current session context to the Responses API for chat replies.
-- Define `FULL_TRANSCRIPT_RECALL_LIMIT_BYTES = 100_000`.
-- Save via atomic staging: write updated durable files to same-directory temp files, atomically replace `Memoir.md` and `FullTranscript.jsonl`, write a save-completion marker, then clear `CurrentSession.jsonl`.
-- On startup, if a save-completion marker is found, clear `CurrentSession.jsonl` and remove the marker because the durable save already completed before a crash.
-- Load relevant `UserProfile.json` context into normal chat turns so the agent can personalize replies without requiring explicit recall.
-- Extend `save_and_clear` so after memoirization it asks the LLM to produce conservative profile updates from `CurrentSession.jsonl`.
-- Profile updates should be grounded in the saved transcript, avoid sensitive or speculative inferences, and remain inspectable/editable by the user.
-- Profile update failure should be best-effort and non-fatal: the core save to `Memoir.md` and `FullTranscript.jsonl` can still succeed.
-- Configure the model with `OPENAI_MODEL`, defaulting to `gpt-5.4-mini`.
-- Require `OPENAI_API_KEY` for real OpenAI-backed chat.
+### Memory Model
+- Conversation memory: `CurrentSession.jsonl`
+  - Temporary staging memory for the active session.
+  - Stores raw user/assistant turns while the session is active.
+  - Cleared after a confirmed save completes, or discarded if the user declines saving.
+  - Used as input for memoir generation and profile-update generation.
+
+- Memoir memory: `Memoir.md`
+  - Durable distilled narrative memory of conversation sessions.
+  - Captures salient events, feelings, decisions, useful context, unresolved threads, and session-local preference signals.
+  - Used as the primary source for recall.
+
+- User profile memory: `UserProfile.json`
+  - Durable structured personalization memory.
+  - Stores stable preferences, recurring themes, important people, goals, and open threads.
+  - Explicit user-stated preferences may be added immediately.
+  - Inferred themes/preferences should be promoted only after they appear across at least two saved memoir entries.
+  - Used to personalize normal chat turns and support continuity across sessions.
 
 ### Tool Orchestration
-- Tools are implemented in the Python CLI orchestrator.
-- The LLM may request tools through Responses API function/tool calls.
-- The orchestrator validates the requested tool name and arguments.
-- The orchestrator executes allowed tools and sends tool results back to the model when needed.
+- Tools are implemented in the Python CLI orchestrator; the model may request tools through Responses API function/tool calls.
+- The orchestrator validates tool names and arguments, executes allowed tools, and sends tool results back to the model.
 - The model never directly reads or writes files.
-- `save_and_clear` always requires explicit user confirmation before file writes, even if the LLM requests it.
+- `save_and_clear` remains one confirmed lifecycle operation: commit the staged session into durable memory, then clear `CurrentSession.jsonl`.
+- v1 does not support mid-session durable checkpoints. A future `checkpoint_memory` operation may save only new turns without clearing the active session.
 
 ### Tools
 - `recall`
-  - Purpose: use an LLM to identify what saved prior conversation the user is referring to.
-  - Inputs: current user utterance, recent current-session context, and optional recall hint.
-  - Memory context: pass `Memoir.md`; also pass `FullTranscript.jsonl` only when its size is `<= 100_000` bytes.
-  - Prompt: separate recall-specific prompt that asks the model to find grounded matches, avoid guessing, and return a structured result.
-  - Reads: `Memoir.md` and, when under the size threshold, `FullTranscript.jsonl`.
-  - Writes: nothing.
-  - Output: structured result with `found`, `confidence`, `summary`, `date/session_id` when known, optional supporting excerpts, and `full_transcript_used`.
-  - Failure behavior: if no grounded match is found, return `found=false`; if the transcript is over the limit, set `full_transcript_used=false` and continue with `Memoir.md`.
-  - Use when the user says things like "remember when," "the other day," "last time," or otherwise refers to saved prior conversation.
-- `save_and_clear`
-  - Purpose: commit the current staged session into long-term memory, then clear the staging file.
-  - Inputs: reason for saving and optional suggested title/theme.
-  - LLM step: use a separate memoirization prompt to convert `CurrentSession.jsonl` into first-person readable memoir prose for `Memoir.md`.
-  - Prompt: preserve the user's meaning, avoid inventing facts, keep uncertainty intact, and write a dated memoir entry.
-  - Deterministic file step: append the exact raw session records to `FullTranscript.jsonl`.
-  - Profile step: ask the LLM for conservative updates to `UserProfile.json` using the saved transcript.
-  - Reads: `CurrentSession.jsonl`.
-  - Writes: only after explicit user confirmation; appends generated prose to `Memoir.md`, appends raw records to `FullTranscript.jsonl`, updates `UserProfile.json` when possible, then clears `CurrentSession.jsonl`.
-  - Output: save status and file paths updated.
-  - Failure behavior: if memoirization or either append fails, do not clear `CurrentSession.jsonl`.
-  - Use when the user runs `/save`, confirms a save at `/quit`, confirms saving an interrupted previous session on startup, or accepts an agent suggestion to save.
-- `inspect_memory_paths`
-  - Purpose: report where memory files live.
-  - Inputs: none.
-  - Reads: filesystem path configuration.
-  - Writes: nothing.
-  - Output: paths for `CurrentSession.jsonl`, `FullTranscript.jsonl`, and `Memoir.md`.
-  - Use for `/memory` or when the user asks where the memoir is stored.
+  - Normal chat turns include `UserProfile.json` as long-term personalization context, while `Memoir.md` is used only when recall is needed.
+  - Reads `Memoir.md` for narrative memory and `UserProfile.json` for personalization context; it does not read a durable raw transcript.
+  - Recall responses should identify uncertainty and avoid pretending that inferred profile patterns are facts.
 
-### Other Implementation Choices
-- Python CLI is the v1 interface.
-- The standard OpenAI SDK is enough for v1; no Agents SDK.
-- `Memoir.md` is the primary readable memory used for recall.
-- `FullTranscript.jsonl` is the authoritative full conversation memory and may be consulted for exact detail while under the v1 size limit.
-- `UserProfile.json` is the structured personalization memory used for user preferences, recurring themes, important people, goals, and open threads.
-- `CurrentSession.jsonl` is temporary staging memory.
-- If the user declines saving an active or interrupted session, `CurrentSession.jsonl` is discarded.
-- v1 uses LLM-based recall over local files, without vector embeddings or a separate search index.
+- `save_and_clear`
+  - On save, the LLM generates a dated `Memoir.md` entry from `CurrentSession.jsonl`.
+  - The memoir entry should include session-local preference signals when relevant, without overclaiming them as stable traits.
+  - The LLM also proposes conservative `UserProfile.json` updates from the saved session and existing memoir/profile context.
+  - Saves `Memoir.md` atomically, updates `UserProfile.json` when possible, and clears `CurrentSession.jsonl` only after the memoir save succeeds.
+
+- `inspect_memory_paths`
+  - Reports paths for `CurrentSession.jsonl`, `Memoir.md`, and `UserProfile.json`.
+
+### Other Implementation Details
+- Use the standard `openai` package with `OpenAI().responses.create(...)`. Keep `python -m memoir` and `./run.sh` as the v1 entrypoints; the user-facing agent name is Memorex.
+- Store memory under `~/.memorex` by default, with `MEMOIR_DATA_DIR` available as an override.
+- Do not keep durable `FullTranscript.jsonl` in v1. `CurrentSession.jsonl` is cleared after confirmed save or discarded if the user declines saving.
+- Save via atomic staging: write updated durable files to same-directory temp files, atomically replace `Memoir.md`, update `UserProfile.json` when available, write a save-completion marker, then clear `CurrentSession.jsonl`.
+- On startup, if a save-completion marker is found, clear `CurrentSession.jsonl` and remove the marker because the durable memoir save already completed before a crash.
+- Configure the model with `OPENAI_MODEL`, defaulting to `gpt-5.4-mini`; require `OPENAI_API_KEY` for real OpenAI-backed chat.
 
 ## Test Plan
-- Test JSONL append/read behavior for current and full transcript files.
-- Test `/save`: current session is appended to `FullTranscript.jsonl`, rendered into `Memoir.md`, then cleared.
-- Test startup recovery when `CurrentSession.jsonl` exists.
-- Test `/quit` save and discard paths.
-- Test recall with a matching saved memoir entry.
-- Test recall with no plausible match.
-- Test recall includes `FullTranscript.jsonl` when it is `<= 100_000` bytes.
-- Test recall skips `FullTranscript.jsonl` and uses `Memoir.md` only when it is over `100_000` bytes.
-- Test that recall is read-only and does not modify `CurrentSession.jsonl`, `FullTranscript.jsonl`, or `Memoir.md`.
-- Test that LLM-requested `save_and_clear` requires explicit user confirmation before writing.
-- Test that failed memoirization does not clear `CurrentSession.jsonl`.
-- Test that saved sessions can update `UserProfile.json`.
-- Test that profile update failure does not block the core save to `Memoir.md` and `FullTranscript.jsonl`.
+- Test active turns are staged in `CurrentSession.jsonl`.
+- Test confirmed save writes `Memoir.md`, updates `UserProfile.json`, and clears `CurrentSession.jsonl`.
+- Test declined save discards only the intended staging data.
+- Test startup recovery for interrupted `CurrentSession.jsonl` and save-completion markers.
+- Test recall uses `Memoir.md` and `UserProfile.json`, not a full transcript file.
+- Test explicit preferences can update profile immediately.
+- Test inferred preferences require evidence from at least two memoir entries before profile promotion.
+- Test profile update failure does not block memoir save or staged-session cleanup after memoir save succeeds.
+- Test atomic save recovery does not duplicate or lose staged memory.
 - Mock OpenAI calls so tests do not require network access or an API key.
 
 ## Running
@@ -158,5 +121,5 @@ If you want, I can help you turn that into a tiny mantra for tomorrow.
 Save this session to the memoir before quitting? [y/N] y
 Saved and cleared the current session.
 Memoir.md: /home/suds05/.memorex/Memoir.md
-FullTranscript.jsonl: /home/suds05/.memorex/FullTranscript.jsonl
+UserProfile.json: /home/suds05/.memorex/UserProfile.json
 ```
