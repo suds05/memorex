@@ -7,27 +7,18 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 
 ## Requirements
 - The agent presents as a curious, reflective listener who nudges the user to express themselves.
-- The agent avoids therapy, diagnosis, and heavy advice unless the user explicitly asks.
-- Every active turn is written to `CurrentSession.jsonl` as staging memory.
-- Saved sessions are appended to `FullTranscript.jsonl` with full-fidelity raw conversation records.
-- Saved sessions are also converted into dated readable entries in `Memoir.md`.
-- The user can trigger saving with `/save`.
-- The agent may suggest saving at natural moments, but saving requires explicit user confirmation.
-- On `/quit`, the CLI asks whether to save the active session.
-- On startup, if an interrupted `CurrentSession.jsonl` exists, the CLI asks whether to save or discard it before starting a new session.
-- `/memory` prints the paths for `CurrentSession.jsonl`, `FullTranscript.jsonl`, and `Memoir.md`.
+- Agent remembers users well and acts accordingly. This is emphasized as a key requirement.
+- Other Agent behaviors
+  - The agent avoids therapy, diagnosis, and heavy advice unless the user explicitly asks.
+  - Keep replies short, warm, and conversational.
+  - Prefer reflection plus one open-ended follow-up question.
+  - Do not over-summarize the user during the live conversation.
+  - Preserve uncertainty and avoid inventing details in generated memoir entries.
+  - Treat save operations as user-controlled, not autonomous.
+  - When recalling, distinguish remembered facts from inference and avoid pretending certainty when memory is vague.
 - The user can refer to earlier saved conversations, such as "remember when we talked about...", and the agent should attempt to recall the relevant prior discussion.
 - Recall must be grounded in saved memory. If no likely match is found, the agent should say it does not remember clearly and invite the user to say more.
-- For v1, full transcript recall only includes `FullTranscript.jsonl` when it is at or below `100_000` bytes. Above that limit, recall falls back to `Memoir.md` only and reports that exact transcript recall was skipped.
-
-## Agent Behavior
-- Keep replies short, warm, and conversational.
-- Prefer reflection plus one open-ended follow-up question.
-- Do not over-summarize the user during the live conversation.
-- Preserve uncertainty and avoid inventing details in generated memoir entries.
-- Treat save operations as user-controlled, not autonomous.
-- When recalling, distinguish remembered facts from inference and avoid pretending certainty when memory is vague.
-- If `FullTranscript.jsonl` exceeds the v1 recall limit, the agent may say exact transcript recall is unavailable and continue from `Memoir.md`.
+- User should have control over saving sessions. The agent can suggest saving at natural moments, but the user must explicitly confirm before any files are written. 
 
 ## Key Implementation Aspects
 - Scaffold a small Python project with a CLI entrypoint runnable as `python -m memoir`.
@@ -39,9 +30,19 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
   - `Memoir.md`
 - Use append-only JSONL for transcript durability.
 - Use the local transcript as the source of truth rather than relying only on OpenAI-hosted conversation state.
+- Every active turn is written to `CurrentSession.jsonl` as staging memory.
+- Saved sessions are appended to `FullTranscript.jsonl` with full-fidelity raw conversation records.
+- Saved sessions are also converted into dated readable entries in `Memoir.md`.
+- The user can trigger saving with `/save`.
+- The agent may suggest saving at natural moments, but saving requires explicit user confirmation.
+- On `/quit`, the CLI asks whether to save the active session.
+- On startup, if an interrupted `CurrentSession.jsonl` exists, the CLI asks whether to save or discard it before starting a new session.
+- `/memory` prints the paths for `CurrentSession.jsonl`, `FullTranscript.jsonl`, and `Memoir.md`.
+- For v1, full transcript recall only includes `FullTranscript.jsonl` when it is at or below `100_000` bytes. Above that limit, recall falls back to `Memoir.md` only and reports that exact transcript recall was skipped.
 - Send recent/current session context to the Responses API for chat replies.
 - Define `FULL_TRANSCRIPT_RECALL_LIMIT_BYTES = 100_000`.
-- Clear `CurrentSession.jsonl` only after both `Memoir.md` and `FullTranscript.jsonl` are successfully updated.
+- Save via atomic staging: write updated durable files to same-directory temp files, atomically replace `Memoir.md` and `FullTranscript.jsonl`, write a save-completion marker, then clear `CurrentSession.jsonl`.
+- On startup, if a save-completion marker is found, clear `CurrentSession.jsonl` and remove the marker because the durable save already completed before a crash.
 - Configure the model with `OPENAI_MODEL`, defaulting to `gpt-5.4-mini`.
 - Require `OPENAI_API_KEY` for real OpenAI-backed chat.
 
