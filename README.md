@@ -7,14 +7,12 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 
 ## Requirements
 - The agent presents as a curious, reflective listener who nudges the user to express themselves.
-- Agent remembers users well and acts accordingly. This is emphasized as a key requirement.
-- Other Agent behaviors
-  - The agent avoids therapy, diagnosis, and heavy advice unless the user explicitly asks.
-  - Keep replies short, warm, and conversational.
-  - Prefer reflection plus one open-ended follow-up question.
-  - Do not over-summarize the user during the live conversation.
+- Agent remembers users well and acts accordingly. This is a key requirement.
+  - The agent maintains a lightweight understanding of the user over time, including preferences, recurring themes, important people, goals, and open threads.
+  - The agent supports continuity across sessions by noticing unresolved or recurring topics and, when appropriate, asking whether the user wants to revisit them.
+  - The agent adapts its response style based on remembered user preferences, such as concise answers, practical suggestions, or a reflective tone.
+- Agent remains factual.
   - Preserve uncertainty and avoid inventing details in generated memoir entries.
-  - Treat save operations as user-controlled, not autonomous.
   - When recalling, distinguish remembered facts from inference and avoid pretending certainty when memory is vague.
 - The user can refer to earlier saved conversations, such as "remember when we talked about...", and the agent should attempt to recall the relevant prior discussion.
 - Recall must be grounded in saved memory. If no likely match is found, the agent should say it does not remember clearly and invite the user to say more.
@@ -28,11 +26,14 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
   - `CurrentSession.jsonl`
   - `FullTranscript.jsonl`
   - `Memoir.md`
+  - `UserProfile.json`
 - Use append-only JSONL for transcript durability.
 - Use the local transcript as the source of truth rather than relying only on OpenAI-hosted conversation state.
 - Every active turn is written to `CurrentSession.jsonl` as staging memory.
 - Saved sessions are appended to `FullTranscript.jsonl` with full-fidelity raw conversation records.
 - Saved sessions are also converted into dated readable entries in `Memoir.md`.
+- Saved sessions may also update `UserProfile.json`, which stores durable user-level facts, preferences, recurring themes, important people, goals, and open threads.
+- Saving a session is treated as permission to update `UserProfile.json`; no separate profile-update confirmation is required.
 - The user can trigger saving with `/save`.
 - The agent may suggest saving at natural moments, but saving requires explicit user confirmation.
 - On `/quit`, the CLI asks whether to save the active session.
@@ -43,6 +44,10 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 - Define `FULL_TRANSCRIPT_RECALL_LIMIT_BYTES = 100_000`.
 - Save via atomic staging: write updated durable files to same-directory temp files, atomically replace `Memoir.md` and `FullTranscript.jsonl`, write a save-completion marker, then clear `CurrentSession.jsonl`.
 - On startup, if a save-completion marker is found, clear `CurrentSession.jsonl` and remove the marker because the durable save already completed before a crash.
+- Load relevant `UserProfile.json` context into normal chat turns so the agent can personalize replies without requiring explicit recall.
+- Extend `save_and_clear` so after memoirization it asks the LLM to produce conservative profile updates from `CurrentSession.jsonl`.
+- Profile updates should be grounded in the saved transcript, avoid sensitive or speculative inferences, and remain inspectable/editable by the user.
+- Profile update failure should be best-effort and non-fatal: the core save to `Memoir.md` and `FullTranscript.jsonl` can still succeed.
 - Configure the model with `OPENAI_MODEL`, defaulting to `gpt-5.4-mini`.
 - Require `OPENAI_API_KEY` for real OpenAI-backed chat.
 
@@ -71,8 +76,9 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
   - LLM step: use a separate memoirization prompt to convert `CurrentSession.jsonl` into first-person readable memoir prose for `Memoir.md`.
   - Prompt: preserve the user's meaning, avoid inventing facts, keep uncertainty intact, and write a dated memoir entry.
   - Deterministic file step: append the exact raw session records to `FullTranscript.jsonl`.
+  - Profile step: ask the LLM for conservative updates to `UserProfile.json` using the saved transcript.
   - Reads: `CurrentSession.jsonl`.
-  - Writes: only after explicit user confirmation; appends generated prose to `Memoir.md`, appends raw records to `FullTranscript.jsonl`, then clears `CurrentSession.jsonl`.
+  - Writes: only after explicit user confirmation; appends generated prose to `Memoir.md`, appends raw records to `FullTranscript.jsonl`, updates `UserProfile.json` when possible, then clears `CurrentSession.jsonl`.
   - Output: save status and file paths updated.
   - Failure behavior: if memoirization or either append fails, do not clear `CurrentSession.jsonl`.
   - Use when the user runs `/save`, confirms a save at `/quit`, confirms saving an interrupted previous session on startup, or accepts an agent suggestion to save.
@@ -89,6 +95,7 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 - The standard OpenAI SDK is enough for v1; no Agents SDK.
 - `Memoir.md` is the primary readable memory used for recall.
 - `FullTranscript.jsonl` is the authoritative full conversation memory and may be consulted for exact detail while under the v1 size limit.
+- `UserProfile.json` is the structured personalization memory used for user preferences, recurring themes, important people, goals, and open threads.
 - `CurrentSession.jsonl` is temporary staging memory.
 - If the user declines saving an active or interrupted session, `CurrentSession.jsonl` is discarded.
 - v1 uses LLM-based recall over local files, without vector embeddings or a separate search index.
@@ -105,6 +112,8 @@ Use the standard OpenAI Python SDK with the Responses API, not the Agents SDK. D
 - Test that recall is read-only and does not modify `CurrentSession.jsonl`, `FullTranscript.jsonl`, or `Memoir.md`.
 - Test that LLM-requested `save_and_clear` requires explicit user confirmation before writing.
 - Test that failed memoirization does not clear `CurrentSession.jsonl`.
+- Test that saved sessions can update `UserProfile.json`.
+- Test that profile update failure does not block the core save to `Memoir.md` and `FullTranscript.jsonl`.
 - Mock OpenAI calls so tests do not require network access or an API key.
 
 ## Running
